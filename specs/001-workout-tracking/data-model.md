@@ -12,9 +12,10 @@
 │ id              │       │ id              │       │ id              │
 │ name            │       │ routineId (FK)  │       │ workoutId (FK)  │
 │ description     │       │ name            │       │ name            │
-│ isTemplate      │       │ position        │       │ targetSets      │
-│ createdAt       │       │ createdAt       │       │ targetReps      │
-└─────────────────┘       └─────────────────┘       │ position        │
+│ isTemplate      │       │ position        │       │ description     │
+│ createdAt       │       │ createdAt       │       │ targetSets      │
+└─────────────────┘       └─────────────────┘       │ targetReps      │
+                                                     │ position        │
                                                      └─────────────────┘
 
 ┌─────────────────┐       ┌─────────────────┐
@@ -23,10 +24,11 @@
 │ activeRoutineId │       │ id              │       ├─────────────────┤
 │ lastWorkoutId   │       │ workoutId (FK)  │       │ id              │
 │ lastWorkoutDate │       │ routineId (FK)  │       │ workoutLogId(FK)│
-└─────────────────┘       │ date            │       │ exerciseName    │
-                          │ completedAt     │       │ setNumber       │
-                          │ isComplete      │       │ weight          │
-                          └─────────────────┘       │ reps            │
+└─────────────────┘       │ date            │       │ exerciseId (FK) │
+                          │ location        │       │ setNumber       │
+                          │ completedAt     │       │ weight          │
+                          │ isComplete      │       │ reps            │
+                          └─────────────────┘       │ notes           │
                                                      └─────────────────┘
 ```
 
@@ -83,6 +85,7 @@ A specific movement with prescribed volume within a workout.
 | id | string | PK, UUID | Unique identifier |
 | workoutId | string | FK → Workout.id, Required | Parent workout |
 | name | string | Required, max 100 chars | Exercise name (e.g., "Bench Press") |
+| description | string | Optional, max 500 chars | Instructions or notes about the exercise (e.g., "Keep elbows tucked, pause at bottom") |
 | targetSets | number | Required, 1-20 | Number of sets to perform |
 | targetReps | number | Required, 1-100 | Target reps per set |
 | position | number | Required, >= 0 | Order within workout (0-indexed) |
@@ -91,6 +94,7 @@ A specific movement with prescribed volume within a workout.
 - Name comes from predefined list (for initial release)
 - Position must be unique within workout
 - targetSets and targetReps must be positive integers
+- description is optional freeform text for user guidance
 
 **Indexes**: `[workoutId, position]` for ordered retrieval
 
@@ -128,6 +132,7 @@ A record of a completed or in-progress workout session.
 | workoutId | string | FK → Workout.id, Required | Which workout template was used |
 | routineId | string | FK → Routine.id, Required | Which routine (denormalized for history) |
 | date | string | Required, ISO date | Calendar date of workout (YYYY-MM-DD) |
+| location | string | Optional, max 100 chars | Where the workout took place (e.g., "LA Fitness", "Home Gym") |
 | startedAt | number | Required | Unix timestamp when started |
 | completedAt | number \| null | Optional | Unix timestamp when finished |
 | isComplete | boolean | Required | Whether all exercises were logged |
@@ -135,6 +140,7 @@ A record of a completed or in-progress workout session.
 **Validation Rules**:
 - One log per workout per day (unique constraint on `[workoutId, date]`)
 - Starting new workout on same day replaces incomplete session
+- location is optional freeform text for gym/location tracking
 
 **Indexes**:
 - `date` for history browsing (descending)
@@ -154,16 +160,21 @@ A record of one set performed during a workout.
 |-------|------|-------------|-------------|
 | id | string | PK, UUID | Unique identifier |
 | workoutLogId | string | FK → WorkoutLog.id, Required | Parent workout log |
-| exerciseName | string | Required | Exercise name (denormalized) |
+| exerciseId | string | FK → Exercise.id, Required | Which exercise this set belongs to |
 | setNumber | number | Required, >= 1 | Which set (1-indexed) |
 | weight | number | Required, >= 0 | Weight lifted (0 = bodyweight) |
 | reps | number | Optional, >= 0 | Actual reps performed (optional tracking) |
+| notes | string | Optional, max 500 chars | Freeform notes about how the set felt (e.g., "Felt easy", "Form broke down on last rep") |
 
 **Validation Rules**:
+- exerciseId must reference an existing Exercise
 - Weight can be 0 (bodyweight exercises)
 - setNumber should be sequential per exercise within workout
+- notes is optional freeform text for user reflection
 
-**Indexes**: `workoutLogId` for retrieval with workout log
+**Indexes**:
+- `workoutLogId` for retrieval with workout log
+- `exerciseId` for querying last weight per exercise
 
 ---
 
@@ -205,7 +216,8 @@ const dbSchema = {
   setLogs: {
     keyPath: 'id',
     indexes: [
-      { name: 'byWorkoutLog', keyPath: 'workoutLogId' }
+      { name: 'byWorkoutLog', keyPath: 'workoutLogId' },
+      { name: 'byExercise', keyPath: 'exerciseId' }
     ]
   }
 };
@@ -221,7 +233,7 @@ const dbSchema = {
 | Get workouts in routine | `workouts.index('byRoutinePosition').getAll(IDBKeyRange.bound([routineId, 0], [routineId, Infinity]))` |
 | Get exercises in workout | `exercises.index('byWorkoutPosition').getAll(IDBKeyRange.bound([workoutId, 0], [workoutId, Infinity]))` |
 | Get next workout (cycling) | Calculate from `userState.lastWorkoutId` + routine's workout count |
-| Get last weight for exercise | `setLogs` by `exerciseName`, most recent `workoutLogId` |
+| Get last weight for exercise | `setLogs.index('byExercise').getAll(exerciseId)` → sort by workoutLogId desc → first |
 | Get workout history | `workoutLogs.index('byDate').getAll()` (descending) |
 | Get sets for workout log | `setLogs.index('byWorkoutLog').getAll(workoutLogId)` |
 

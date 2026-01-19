@@ -3,8 +3,6 @@
  *
  * This file defines the TypeScript interfaces for all data entities.
  * These types are the contract between the UI layer and the data layer.
- *
- * @module types
  */
 
 // =============================================================================

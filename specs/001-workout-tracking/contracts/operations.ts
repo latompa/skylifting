@@ -161,14 +161,21 @@ export interface WorkoutLogOperations {
   /**
    * Start a new workout session
    * If a workout for the same day exists, replaces it
+   * @param workoutId The workout template to use
+   * @param location Optional location where the workout is taking place
    * @returns The workout log ID
    */
-  startWorkout(workoutId: string): Promise<string>;
+  startWorkout(workoutId: string, location?: string): Promise<string>;
 
   /**
    * Get the current in-progress workout log, if any
    */
   getCurrentWorkoutLog(): Promise<WorkoutLogWithSets | null>;
+
+  /**
+   * Update a workout log's location
+   */
+  updateWorkoutLogLocation(workoutLogId: string, location: string): Promise<void>;
 
   /**
    * Mark a workout as complete and update cycling state
@@ -204,9 +211,9 @@ export interface SetLogOperations {
   logSet(input: LogSetInput): Promise<string>;
 
   /**
-   * Update a logged set (e.g., fix a typo)
+   * Update a logged set (e.g., fix a typo or add notes)
    */
-  updateSetLog(setLogId: string, updates: Partial<Pick<SetLog, 'weight' | 'reps'>>): Promise<void>;
+  updateSetLog(setLogId: string, updates: Partial<Pick<SetLog, 'weight' | 'reps' | 'notes'>>): Promise<void>;
 
   /**
    * Delete a logged set
@@ -215,8 +222,9 @@ export interface SetLogOperations {
 
   /**
    * Get the most recent weight logged for an exercise
+   * @param exerciseId The exercise ID to look up
    */
-  getLastWeightForExercise(exerciseName: string): Promise<number | null>;
+  getLastWeightForExercise(exerciseId: string): Promise<number | null>;
 }
 
 // =============================================================================
